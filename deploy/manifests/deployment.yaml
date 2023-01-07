@@ -16,9 +16,3 @@ spec:
       containers:
         - name: leader
           image: go.seankhliao.com/test-leaderelection/cmd/leader
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name

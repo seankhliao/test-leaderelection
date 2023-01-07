@@ -14,6 +14,7 @@ import (
 )
 
 func main() {
+	// setup client to talk to api server using service account credentials
 	restConfig, err := rest.InClusterConfig()
 	if err != nil {
 		klog.ErrorS(err, "get rest config")
@@ -25,28 +26,38 @@ func main() {
 		os.Exit(1)
 	}
 
+	// get a unique identity for ourselves
+	hostname, err := os.Hostname()
+	if err != nil {
+		klog.ErrorS(err, "get hostname")
+		os.Exit(1)
+	}
+
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 
-	lock := &resourcelock.LeaseLock{
-		LeaseMeta: metav1.ObjectMeta{
-			Namespace: "default",
-			Name:      "test-lease",
-		},
-		Client: client.CoordinationV1(),
-		LockConfig: resourcelock.ResourceLockConfig{
-			Identity: os.Getenv("POD_NAME"),
-		},
-	}
-
-	// panics on die
+	// runs in a leader election loop
+	// panics on failure
 	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
-		Lock:            lock,
-		LeaseDuration:   15 * time.Second,
-		RenewDeadline:   10 * time.Second,
-		RetryPeriod:     2 * time.Second,
+		// this is the lease we create/update if we win the leader
+		Lock: &resourcelock.LeaseLock{
+			LeaseMeta: metav1.ObjectMeta{
+				Namespace: "default",
+				Name:      "test-lease",
+			},
+			Client: client.CoordinationV1(),
+			LockConfig: resourcelock.ResourceLockConfig{
+				Identity: hostname,
+			},
+		},
+		// recommended defaults
+		LeaseDuration: 15 * time.Second,
+		RenewDeadline: 10 * time.Second,
+		RetryPeriod:   2 * time.Second,
+		// TODO, ensure exit from critical work before canceling context
 		ReleaseOnCancel: true,
 		Callbacks: leaderelection.LeaderCallbacks{
+			// main work should happen here
 			OnStartedLeading: func(ctx context.Context) {
 				dur := 5 * time.Second
 				klog.InfoS("leading", "tick_dur", dur)
@@ -64,10 +75,12 @@ func main() {
 				}
 			},
 			OnStoppedLeading: func() {
+				// TODO: ensure work loop exit before canceling leaderelection ctx
 				cancel()
 				klog.InfoS("stopped leading")
 			},
 			OnNewLeader: func(identity string) {
+				// just notifications
 				klog.InfoS("new leader", "id", identity)
 			},
 		},
