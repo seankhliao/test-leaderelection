@@ -1,0 +1,21 @@
+apiVersion: skaffold/v4beta1
+kind: Config
+metadata:
+  name: test-leader
+build:
+  artifacts:
+    - image: go.seankhliao.com/test-leaderelection/cmd/leader
+      ko:
+        main: ./cmd/leader
+  local:
+    push: false
+  tagPolicy:
+    sha256: {}
+manifests:
+  rawYaml:
+    - deploy/manifests/*
+deploy:
+  kubectl: {}
+  kubeContext: kind-kind
+  logs:
+    prefix: podAndContainer
